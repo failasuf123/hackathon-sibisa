@@ -1,6 +1,12 @@
+import { db } from "@/service/firebaseConfig";
 import { saveUserToFirestore } from "@/service/signin/postUserToFirestore";
+import { redirectLoginManagement } from "@/service/signin/redirectLoginManagement";
 import { updateUserProfilePictureIfChanged } from "@/service/signin/updateUserProfilePictureIfChanged";
 import axios from "axios";
+import { doc, getDoc } from "firebase/firestore";
+import Cookies from "js-cookie";
+
+
 
 export const getUserProfile = async (tokenInfo: any) => {
   try {
@@ -9,31 +15,30 @@ export const getUserProfile = async (tokenInfo: any) => {
       {
         headers: {
           Authorization: `Bearer ${tokenInfo?.access_token}`,
-          Accept: "Application/json",
+          Accept: "application/json",
         },
       }
     );
 
     const userData = response.data;
-    console.log("hai")
-
-    // Simpan data user ke localStorage
     localStorage.setItem("user", JSON.stringify(userData));
-    localStorage.getItem("user")
 
-    localStorage.setItem("user", JSON.stringify(response.data));
-    const userDataGet = response.data;  
-    const userId = userDataGet.id;
-    const username = userDataGet.name;
-    console.log(
-      `username:${username} \n
-      userId:${userId}`
-    )
-    // Simpan data user ke Firestore (jika belum ada)
-    await saveUserToFirestore(userData);
+    const userRef = doc(db, "Users", userData.id);
+    let userDoc = await getDoc(userRef);
 
-    // Perbarui URL foto profil di Firestore jika berbeda
+    if (!userDoc.exists()) {
+      await saveUserToFirestore(userRef, userData);
+      userDoc = await getDoc(userRef);
+    }
+
     await updateUserProfilePictureIfChanged(userData.id, userData.picture);
+
+    const finalUserData = { id: userDoc.id, ...(userDoc.data() as any) };
+    
+    Cookies.set("user", JSON.stringify(finalUserData), { expires: 7 }); 
+    Cookies.set("userRole", finalUserData.userRole, { expires: 7 });
+
+    redirectLoginManagement();
 
   } catch (error) {
     console.error("Error fetching user profile:", error);
